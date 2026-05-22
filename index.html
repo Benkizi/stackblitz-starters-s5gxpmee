@@ -8,7 +8,7 @@
         :root {
             --bg: #f0f2f5; --card: #ffffff; --text: #2c3e50; --label: #777777;
             --primary: #3498db; --accent: #2ecc71; --danger: #e74c3c;
-            --purple: #9b59b6; --shadow: rgba(0,0,0,0.08);
+            --purple: #9b59b6; --shadow: rgba(0,0,0,0.08); --warning: #e67e22;
         }
         body.dark-mode {
             --bg: #1a1a1a; --card: #2d2d2d; --text: #f0f2f5; --label: #aaaaaa;
@@ -17,7 +17,6 @@
         body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: var(--text); padding: 10px; transition: 0.3s; margin: 0; }
         .card { background: var(--card); padding: 20px; border-radius: 15px; max-width: 450px; margin: 0 auto 15px auto; box-shadow: 0 4px 12px var(--shadow); }
         
-        /* HEADER */
         .header-bar { display: flex; justify-content: space-between; align-items: center; max-width: 450px; margin: 10px auto 20px auto; }
         .header-left { display: flex; align-items: center; gap: 8px; }
         .logo-img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; border: 2px solid #27ae60; }
@@ -43,10 +42,10 @@
         .interest-tag { color: var(--danger); font-size: 9px; font-weight: bold; display: block; }
         .deadline-banner { background: #fff3cd; color: #856404; padding: 10px; border-radius: 10px; font-size: 10px; text-align: center; margin-bottom: 15px; border: 1px solid #ffeeba; }
         
-        /* New Admin Control Styles */
         .pending-item { display: flex; justify-content: space-between; align-items: center; background: white; color: black; padding: 8px; margin-bottom: 5px; border-radius: 5px; font-size: 11px; border: 1px solid #ccc; }
         .action-btns { display: flex; gap: 5px; }
         .action-btns button { padding: 6px 10px; margin: 0; font-size: 10px; width: auto; border-radius: 4px; }
+        .narration-text { font-style: italic; color: #34495e; font-size: 10px; display: block; margin-top: 2px; }
     </style>
 </head>
 <body>
@@ -87,6 +86,7 @@
                 <option value="repayment">Previous Repayment</option>
             </select>
             <input type="number" id="seedAmt" placeholder="Amount (₦)">
+            <input type="text" id="seedNarration" placeholder="Payment For (e.g., Jan 2024 - Dec 2024)">
             <input type="date" id="seedDate">
             <button id="seedBtn" class="btn-yellow">Inject Data</button>
             
@@ -117,13 +117,20 @@
                     <p class="label">My Loans</p><p class="value" style="color: var(--danger);">₦<span id="pLoans">0</span></p>
                     <span id="interestNotice" class="interest-tag"></span>
                 </div>
+                <div style="grid-column: span 2; background: var(--bg); padding: 12px; border-radius: 12px; border-bottom: 3px solid var(--warning);">
+                    <p class="label">My Savings Deficit (Arrears)</p>
+                    <p class="value" style="color: var(--warning);">₦<span id="pDeficit">0</span></p>
+                    <small style="font-size: 9px; color: #777;">Expected Target (2023 - Today): ₦<span id="pTarget">0</span></small>
+                </div>
             </div>
         </div>
 
         <div class="card">
             <p class="label">Transact</p>
             <input type="number" id="userAmt" placeholder="Amount (₦)">
-            <input type="text" id="userRef" placeholder="Bank Reference (for deposits/repayments)">
+            <input type="text" id="userNarration" placeholder="Payment For (e.g., March & April 2026)">
+            <input type="text" id="userRef" placeholder="Bank Reference (Optional)">
+            
             <button id="userSaveBtn" class="btn-green">Deposit into Savings</button>
             <button id="userRepayBtn" class="btn-purple">Repay My Loan</button>
             <button id="userLoanBtn" class="btn-yellow">Request Loan</button>
@@ -182,11 +189,23 @@
             const now = new Date();
             const deadlineDate = new Date("2026-05-31T23:59:59");
 
+            // Calculate Expected Target (2023: 36k, 2024: 60k, 2025: 60k = 156,000 base)
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1; 
+            let expectedSavings = 156000; 
+            
+            if (currentYear === 2026) {
+                expectedSavings += (currentMonth * 10000);
+            } else if (currentYear > 2026) {
+                expectedSavings += (12 * 10000) + (((currentYear - 2027) * 12 + currentMonth) * 10000);
+            }
+
             sortedDocs.forEach(d => {
                 const data = d.data();
                 const id = d.id;
                 const recordEmail = data.user.toLowerCase().trim();
                 const userEmail = currentUser.email.toLowerCase().trim();
+                const displayNarration = data.narration ? data.narration : "Not Specified";
                 let currentInt = 0;
 
                 if(data.type === 'loan' && data.status === 'approved') {
@@ -205,20 +224,26 @@
                     }
                 }
 
-                // Format Date and Time
                 const dateObj = data.date ? data.date.toDate() : new Date();
                 const dateStr = dateObj.toLocaleDateString() + ' at ' + dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
                 if(recordEmail === userEmail) {
                     let statusColor = data.status === "pending" ? "#f39c12" : (data.status === "rejected" ? "#e74c3c" : "#777");
-                    hList.innerHTML += `<div class="history-item"><strong>${data.type.toUpperCase()}</strong>: ₦${data.amount.toLocaleString()} <span style="color:${statusColor}; font-weight:bold;">[${data.status}]</span> ${currentInt > 0 ? `<span class="interest-tag">+₦${currentInt.toLocaleString()} Penalty</span>` : ''}<br><small>${dateStr} | Ref: ${data.ref || 'N/A'}</small></div>`;
+                    hList.innerHTML += `<div class="history-item">
+                        <strong>${data.type.toUpperCase()}</strong>: ₦${data.amount.toLocaleString()} <span style="color:${statusColor}; font-weight:bold;">[${data.status}]</span>
+                        ${currentInt > 0 ? `<span class="interest-tag">+₦${currentInt.toLocaleString()} Penalty</span>` : ''}
+                        <span class="narration-text">For: ${displayNarration}</span>
+                        <small>${dateStr} | Ref: ${data.ref || 'N/A'}</small>
+                    </div>`;
                 }
                 
                 if(userEmail === ADMIN_EMAIL) {
                     if(data.status === "pending") {
                         pList.innerHTML += `
                         <div class="pending-item">
-                            <span><b>${data.user.split('@')[0]}</b><br>₦${data.amount.toLocaleString()} <b>[${data.type.toUpperCase()}]</b><br><small style="color:#777;">${dateStr}</small></span>
+                            <span><b>${data.user.split('@')[0]}</b><br>₦${data.amount.toLocaleString()} <b>[${data.type.toUpperCase()}]</b>
+                            <span class="narration-text">For: ${displayNarration}</span>
+                            <small style="color:#777;">${dateStr}</small></span>
                             <div class="action-btns">
                                 <button onclick="window.approve('${id}')" style="background:#2ecc71; color:white;">✓ Approve</button>
                                 <button onclick="window.deny('${id}')" style="background:#e74c3c; color:white;">✕ Deny</button>
@@ -227,20 +252,30 @@
                     }
                     
                     adminLog.innerHTML += `<div style="border-bottom:1px solid #eee; padding:6px 2px; display:flex; justify-content:space-between; align-items:center;">
-                        <span><b>${data.user.split('@')[0]}</b> [${data.type.toUpperCase()}]: ₦${data.amount.toLocaleString()}<br><small style="color:#777;">${dateStr}</small></span> 
+                        <span><b>${data.user.split('@')[0]}</b> [${data.type.toUpperCase()}]: ₦${data.amount.toLocaleString()}
+                        <span class="narration-text">${displayNarration}</span>
+                        <small style="color:#777;">${dateStr}</small></span> 
                         <button onclick="window.undo('${id}')" style="background:#e74c3c; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:9px; cursor:pointer;">Undo</button>
                     </div>`;
                 }
             });
+
+            // Update UI Totals
             document.getElementById("globalTotal").innerText = gt.toLocaleString();
             document.getElementById("globalLoans").innerText = gl.toLocaleString();
             document.getElementById("pSavings").innerText = ps.toLocaleString();
             document.getElementById("pLoans").innerText = (pl + totalInt).toLocaleString();
             document.getElementById("interestNotice").innerText = totalInt > 0 ? `(+₦${totalInt.toLocaleString()} Penalty)` : "";
+            
+            // Deficit Calculation
+            document.getElementById("pTarget").innerText = expectedSavings.toLocaleString();
+            let myDeficit = expectedSavings - ps;
+            if (myDeficit < 0) myDeficit = 0; // Prevent negative deficit if they paid in advance
+            document.getElementById("pDeficit").innerText = myDeficit.toLocaleString();
         }
 
         window.approve = async (id) => { if(confirm("Confirm in bank?")) { await updateDoc(doc(db, "ALL_TRANSACTIONS", id), { status: "approved" }); loadData(); } };
-        window.deny = async (id) => { if(confirm("Reject this request? The member will see it as 'Rejected'.")) { await updateDoc(doc(db, "ALL_TRANSACTIONS", id), { status: "rejected" }); loadData(); } };
+        window.deny = async (id) => { if(confirm("Reject this request?")) { await updateDoc(doc(db, "ALL_TRANSACTIONS", id), { status: "rejected" }); loadData(); } };
         window.undo = async (id) => { if(confirm("Permanently delete record?")) { await deleteDoc(doc(db, "ALL_TRANSACTIONS", id)); loadData(); } };
         
         document.getElementById("forgotPassBtn").onclick = async () => {
@@ -250,29 +285,35 @@
         };
         document.getElementById("regBtn").onclick = async () => {
             const email = document.getElementById("newMemEmail").value.trim().toLowerCase();
-            try { await createUserWithEmailAndPassword(auth, email, newMemPass.value); alert("Member Added!"); } catch(e) { alert(e.message); }
+            try { await createUserWithEmailAndPassword(auth, email, document.getElementById("newMemPass").value); alert("Member Added!"); } catch(e) { alert(e.message); }
         };
         document.getElementById("seedBtn").onclick = async () => {
             const email = document.getElementById("seedEmail").value.trim().toLowerCase();
+            const nar = document.getElementById("seedNarration").value.trim();
             await addDoc(collection(db, "ALL_TRANSACTIONS"), {
-                amount: Number(seedAmt.value), user: email, type: document.getElementById("seedType").value,
-                ref: "PREVIOUS_RECORD", status: "approved", date: seedDate.value ? Timestamp.fromDate(new Date(seedDate.value)) : Timestamp.now()
+                amount: Number(document.getElementById("seedAmt").value), user: email, type: document.getElementById("seedType").value,
+                ref: "PREVIOUS_RECORD", narration: nar || "Not Specified", status: "approved", date: document.getElementById("seedDate").value ? Timestamp.fromDate(new Date(document.getElementById("seedDate").value)) : Timestamp.now()
             });
             alert("Data Injected!"); loadData();
         };
         async function userTrans(type) {
             const amt = Number(document.getElementById("userAmt").value);
+            const nar = document.getElementById("userNarration").value.trim();
             if(!amt) return alert("Enter amount!");
             await addDoc(collection(db, "ALL_TRANSACTIONS"), {
-                amount: amt, user: currentUser.email.toLowerCase().trim(), ref: userRef.value || "REQUEST",
-                type: type, status: "pending", date: Timestamp.now()
+                amount: amt, user: currentUser.email.toLowerCase().trim(), ref: document.getElementById("userRef").value || "REQUEST",
+                narration: nar || "Not Specified", type: type, status: "pending", date: Timestamp.now()
             });
-            alert("Submitted!"); loadData();
+            alert("Submitted!"); 
+            document.getElementById("userAmt").value = '';
+            document.getElementById("userNarration").value = '';
+            document.getElementById("userRef").value = '';
+            loadData();
         }
         document.getElementById("userSaveBtn").onclick = () => userTrans('deposit');
         document.getElementById("userRepayBtn").onclick = () => userTrans('repayment');
         document.getElementById("userLoanBtn").onclick = () => userTrans('loan');
-        document.getElementById("loginBtn").onclick = () => signInWithEmailAndPassword(auth, emailInput.value.trim().toLowerCase(), passwordInput.value).catch(e => authError.innerText = e.message);
+        document.getElementById("loginBtn").onclick = () => signInWithEmailAndPassword(auth, document.getElementById("emailInput").value.trim().toLowerCase(), document.getElementById("passwordInput").value).catch(e => document.getElementById("authError").innerText = e.message);
         document.getElementById("logoutBtn").onclick = () => signOut(auth);
     </script>
 </body>
